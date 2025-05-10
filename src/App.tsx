@@ -35,10 +35,14 @@ function useCountUp(target: number, duration = 1000) {
   return value;
 }
 
-function App() {
+interface AppProps {
+  theme: 'light' | 'dark';
+  setTheme: React.Dispatch<React.SetStateAction<'light' | 'dark'>>;
+}
+
+function App({ theme, setTheme }: AppProps) {
   const [amount, setAmount] = useState('');
   const [action, setAction] = useState<'deposit' | 'withdraw'>('deposit');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<Hash | null>(null);
@@ -169,19 +173,20 @@ function App() {
   }, [isConfirming, isSuccess, isError, txHash, action, amount]);
 
   useEffect(() => {
-    // Check for saved theme preference
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.setAttribute('data-theme', savedTheme);
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.style.setProperty('--rk-colors-connectButtonBackground', 'rgba(30, 41, 59, 0.85)');
+      root.style.setProperty('--rk-colors-connectButtonText', '#f8fafc');
+    } else {
+      root.style.setProperty('--rk-colors-connectButtonBackground', '#fff');
+      root.style.setProperty('--rk-colors-connectButtonText', '#1f2937');
     }
-  }, []);
+  }, [theme]);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -350,7 +355,7 @@ function App() {
         {address && (
           <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-8 w-full">
             {/* Wallet Balance Card */}
-            <div className="glass-growth-card relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30">
+            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30">
               <div className="flex flex-col items-center">
                 <span className="mb-2 text-blue-400 flex items-center gap-2 animate-fade-in">
                   <FaWallet className="text-xl" />
@@ -361,31 +366,32 @@ function App() {
                     {animatedWallet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                   <span className="text-lg text-secondary font-medium mb-1">{selectedToken.symbol}</span>
-                  <span className="ml-2 animate-growth-arrow">
-                    <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="10" stroke="#60a5fa" strokeWidth="2.5" fill="none" />
-                    </svg>
-                  </span>
                 </div>
-                {/* Wallet bar: percent not supplied */}
-                <div className="w-full h-2 mt-4 bg-gradient-to-r from-blue-300/30 to-blue-400/60 rounded-full overflow-hidden relative group">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-400 to-blue-500 shadow-lg animate-growth-bar"
-                    style={{ width: `${Math.max(walletPercent * 100, 5)}%`, minWidth: '5%' }}
-                  ></div>
-                  {/* Tooltip text, hidden by default, shown on hover */}
-                  <div
-                    className="absolute left-1/2 -translate-x-1/2 top-full mt-2 px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg z-30"
-                    style={{ whiteSpace: 'nowrap' }}
-                  >
-                    {totalUSDC > 0 ? `${Math.round(walletPercent * 100)}% not supplied` : 'No USDC.e'}
+                {/* Wallet progress bar with tooltip */}
+                <div className="tooltip-container w-full mt-4">
+                  <div className="progress-bar-container">
+                    <div
+                      className="progress-bar"
+                      style={{
+                        width: `${Math.max(walletPercent * 100, 5)}%`,
+                        minWidth: '5%',
+                        '--progress-start': '#60a5fa',
+                        '--progress-end': '#3b82f6'
+                      } as React.CSSProperties}
+                    />
+                  </div>
+                  <div className="tooltip-content">
+                    <div className="tooltip-arrow" />
+                    {totalUSDC > 0 
+                      ? `${Math.round(walletPercent * 100)}% of your total USDC.e is in your wallet`
+                      : 'No USDC.e in your wallet'}
                   </div>
                 </div>
               </div>
             </div>
             {/* Supplied Balance Card */}
             <div
-              className="glass-growth-card relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-green-400/30 cursor-pointer"
+              className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-green-400/30 cursor-pointer"
               onClick={() => setShowGoalCard(true)}
               title="Click to set your supply goal"
             >
@@ -399,18 +405,26 @@ function App() {
                     {animatedSupplied.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                   <span className="text-lg text-secondary font-medium mb-1">{selectedToken.symbol}</span>
-                  <span className="ml-2 animate-growth-arrow">
-                    <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
-                      <path d="M12 19V5M12 5l-5 5M12 5l5 5" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </span>
                 </div>
-                {/* Growth bar with goal */}
-                <div className="w-full h-2 mt-4 bg-gradient-to-r from-green-300/30 to-green-400/60 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-green-400 to-green-500 shadow-lg animate-growth-bar"
-                    style={{ width: `${Math.max(growthPercent * 100, 5)}%`, minWidth: '5%' }}
-                  ></div>
+                {/* Supply progress bar with tooltip */}
+                <div className="tooltip-container w-full mt-4">
+                  <div className="progress-bar-container">
+                    <div
+                      className="progress-bar"
+                      style={{
+                        width: `${Math.max(growthPercent * 100, 5)}%`,
+                        minWidth: '5%',
+                        '--progress-start': '#34d399',
+                        '--progress-end': '#10b981'
+                      } as React.CSSProperties}
+                    />
+                  </div>
+                  <div className="tooltip-content">
+                    <div className="tooltip-arrow" />
+                    {supplyGoal > 0
+                      ? `${Math.round(growthPercent * 100)}% of your ${supplyGoal.toLocaleString()} USDC.e supply goal`
+                      : 'Set a supply goal to track your progress'}
+                  </div>
                 </div>
               </div>
               {isATokenError && (

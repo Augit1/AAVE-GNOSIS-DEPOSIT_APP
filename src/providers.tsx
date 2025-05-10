@@ -1,4 +1,4 @@
-import { RainbowKitProvider, getDefaultConfig } from '@rainbow-me/rainbowkit';
+import { RainbowKitProvider, getDefaultConfig, darkTheme, lightTheme, Theme } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
 import { gnosis } from 'viem/chains';
@@ -16,11 +16,28 @@ const config = getDefaultConfig({
 
 const queryClient = new QueryClient();
 
-export function Providers({ children }: { children: React.ReactNode }) {
+const customDarkTheme: Theme = {
+  ...darkTheme(),
+  colors: {
+    ...darkTheme().colors,
+    connectButtonBackground: 'rgba(36, 41, 46, 0.75)',
+    connectButtonText: '#f8fafc',
+  },
+};
+
+export function Providers({ children, theme }: { children: React.ReactNode, theme: 'light' | 'dark' }) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider>
+        <RainbowKitProvider
+          theme={theme === 'dark'
+            ? customDarkTheme
+            : lightTheme({
+                accentColor: '#3b82f6',
+                accentColorForeground: '#fff',
+              })
+          }
+        >
           {children}
         </RainbowKitProvider>
       </QueryClientProvider>
