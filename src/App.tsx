@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { parseUnits, formatUnits, Hash } from 'viem';
 import { AAVE_POOL_ABI, ERC20_ABI } from './config/abis';
 import { AAVE_POOL_ADDRESS, TOKENS } from './config/constants';
 import { FaWallet } from 'react-icons/fa';
 import { GiPlantSeed } from 'react-icons/gi';
+import TokenSelectionModal from './app/components/TokenSelectionModal';
 
 interface Transaction {
   hash: Hash;
@@ -54,10 +55,19 @@ function App({ theme, setTheme }: AppProps) {
   const [showHistory, setShowHistory] = useState(false);
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
+  const [selectedTokenKey, setSelectedTokenKey] = useState<string>("USDC");
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const selectedToken = (TOKENS as any)[selectedTokenKey];
 
-  const selectedToken = TOKENS.USDC;
+  // Native xDAI balance
+  const { data: nativeBalance, isLoading: isNativeBalanceLoading } = useBalance({
+    address,
+    query: {
+      enabled: selectedTokenKey === 'XDAI' && !!address,
+    },
+  });
 
-  // Read user's token balance
+  // Read user's token balance (ERC20)
   const { 
     data: balance, 
     isError: balanceError,
@@ -69,7 +79,7 @@ function App({ theme, setTheme }: AppProps) {
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     query: {
-      enabled: !!address,
+      enabled: selectedTokenKey !== 'XDAI' && !!address,
       refetchInterval: 5000,
       retry: 3,
     },
@@ -93,7 +103,12 @@ function App({ theme, setTheme }: AppProps) {
   });
 
   // Read user's aToken (aGnoUSDCe) balance in the pool
-  const { data: aTokenBalance, isLoading: isATokenLoading, isError: isATokenError } = useReadContract({
+  const { 
+    data: aTokenBalance, 
+    isLoading: isATokenLoading, 
+    isError: isATokenError,
+    refetch: refetchATokenBalance 
+  } = useReadContract({
     address: selectedToken.aTokenAddress,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
@@ -101,6 +116,7 @@ function App({ theme, setTheme }: AppProps) {
     query: {
       enabled: !!address,
       refetchInterval: 5000,
+      retry: 3,
     },
   });
 
@@ -108,6 +124,16 @@ function App({ theme, setTheme }: AppProps) {
   const { isLoading: isConfirming, isSuccess, isError } = useWaitForTransactionReceipt({
     hash: txHash || undefined,
   });
+
+  // Refetch balances after successful transaction
+  useEffect(() => {
+    if (isSuccess) {
+      refetchATokenBalance();
+      setTxStatus('success');
+      setAmount('');
+      setTxHash(null);
+    }
+  }, [isSuccess, refetchATokenBalance]);
 
   // Supply goal state (persisted)
   const [supplyGoal, setSupplyGoal] = useState(() => {
@@ -283,7 +309,9 @@ function App({ theme, setTheme }: AppProps) {
   };
 
   // Calculate animated wallet balance
-  const walletBalance = balance ? parseFloat(formatBalance(balance)) : 0;
+  const walletBalance = selectedTokenKey === 'XDAI'
+    ? (nativeBalance ? parseFloat(nativeBalance.formatted) : 0)
+    : (balance ? parseFloat(formatBalance(balance)) : 0);
   const animatedWallet = useCountUp(walletBalance, 1200);
 
   // Calculate supplied progress
@@ -355,7 +383,7 @@ function App({ theme, setTheme }: AppProps) {
         {address && (
           <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-8 w-full">
             {/* Wallet Balance Card */}
-            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30">
+            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer" onClick={() => setShowTokenModal(true)} title="Click to select token">
               <div className="flex flex-col items-center">
                 <span className="mb-2 text-blue-400 flex items-center gap-2 animate-fade-in">
                   <FaWallet className="text-xl" />
@@ -436,7 +464,7 @@ function App({ theme, setTheme }: AppProps) {
             {/* Set Goal Card (modal style) with fluid animation */}
             {showGoalCard && (
               <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm animate-fade-in-fast">
-                <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-2xl w-80 flex flex-col items-center transform transition-all duration-300 scale-95 opacity-0 animate-modal-in">
+                <div className="glass-card rounded-2xl p-6 shadow-2xl w-80 flex flex-col items-center transform transition-all duration-300 scale-95 opacity-0 animate-modal-in">
                   <h3 className="text-lg font-semibold mb-4 text-primary">Set Supply Goal</h3>
                   <input
                     type="number"
@@ -444,7 +472,8 @@ function App({ theme, setTheme }: AppProps) {
                     step="0.01"
                     value={supplyGoal}
                     onChange={e => setSupplyGoal(Number(e.target.value))}
-                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-lg mb-4 bg-transparent text-primary"
+                    className="w-full px-4 py-2 rounded-xl border focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-lg mb-4 bg-transparent text-primary"
+                    style={{ borderColor: 'var(--input-border)' }}
                   />
                   <button
                     className="submit-button w-full py-2 rounded-xl text-lg font-medium transition-all duration-200"
@@ -595,7 +624,7 @@ function App({ theme, setTheme }: AppProps) {
               {transactions.map((tx) => (
                 <div
                   key={tx.hash}
-                  className="flex items-center justify-between p-4 rounded-xl bg-opacity-50 bg-gray-100 dark:bg-gray-800"
+                  className="glass-card flex items-center justify-between p-4 rounded-xl bg-opacity-50 shadow-md"
                 >
                   <div className="flex items-center">
                     <div className={`w-2 h-2 rounded-full mr-3 ${
@@ -633,6 +662,16 @@ function App({ theme, setTheme }: AppProps) {
             </div>
           </div>
         </div>
+
+        {/* Token Selection Modal */}
+        <TokenSelectionModal
+          open={showTokenModal}
+          onClose={() => setShowTokenModal(false)}
+          onSelect={(key) => setSelectedTokenKey(key)}
+          selectedTokenKey={selectedTokenKey}
+          tokens={TOKENS}
+          theme={theme}
+        />
       </div>
     </div>
   );

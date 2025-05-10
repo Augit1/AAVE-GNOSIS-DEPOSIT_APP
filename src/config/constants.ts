@@ -11,7 +11,7 @@ export const TOKENS = {
     address: '0x3ce36eA2AFd0f92b64D0014c6386Ac178D1133cc' as `0x${string}`,
     decimals: 18,
     symbol: 'xDAI',
-    aTokenAddress: '0x87a1fdc4C726c459f597282be639a045062c0E46' as `0x${string}`
+    aTokenAddress: '0xd0Dd6cEF72143E22cCED4867eb0d5F2328715533' as `0x${string}`
   },
   WETH: {
     address: '0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1' as `0x${string}`,
