@@ -598,7 +598,7 @@ function App({ theme, setTheme }: AppProps) {
         )}
 
         {/* Info Section - Fixed at bottom */}
-        <div className="fixed bottom-0 left-0 right-0 py-4 bg-opacity-80 backdrop-blur-sm bg-gradient-to-t from-gray-900/10 to-transparent dark:from-gray-900/20">
+        <div className="fixed bottom-0 left-0 right-0 py-3 bg-opacity-80 backdrop-blur-sm bg-gradient-to-t from-gray-900/10 to-transparent dark:from-gray-900/20">
           <div className="max-w-2xl mx-auto px-4">
             <div className="text-center text-sm text-secondary space-y-1">
               <p className="animate-fade-in">Connected to Gnosis Chain</p>
