@@ -10,11 +10,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aave/protocol-js": "^4.3.0",
     "@rainbow-me/rainbowkit": "^2.0.0",
+    "@safe-global/protocol-kit": "^6.0.3",
+    "@safe-global/safe-core-sdk-types": "^5.1.0",
+    "@safe-global/safe-ethers-lib": "^1.9.4",
     "@tanstack/react-query": "^5.17.19",
+    "ethers": "^5.8.0",
+    "framer-motion": "^12.10.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^5.5.0",
+    "react-tooltip": "^5.28.1",
     "viem": "^2.0.0",
     "wagmi": "^2.0.0"
   },

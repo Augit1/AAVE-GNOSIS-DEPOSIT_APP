@@ -6,6 +6,10 @@ import { AAVE_POOL_ABI, ERC20_ABI } from './config/abis';
 import { AAVE_POOL_ADDRESS, TOKENS } from './config/constants';
 import { FaWallet } from 'react-icons/fa';
 import { GiPlantSeed } from 'react-icons/gi';
+import { TokenSelectionModal } from './app/components/TokenSelectionModal';
+import { SafeStatusCard, BorrowFundsCard } from './app/components/SafeIntegration';
+import { SafeAnalytics, SafeTransaction } from './app/components/SafeAnalytics';
+import { motion } from 'framer-motion';
 
 interface Transaction {
   hash: Hash;
@@ -35,10 +39,14 @@ function useCountUp(target: number, duration = 1000) {
   return value;
 }
 
-function App() {
+interface AppProps {
+  theme: 'light' | 'dark';
+  setTheme: React.Dispatch<React.SetStateAction<'light' | 'dark'>>;
+}
+
+function App({ theme, setTheme }: AppProps) {
   const [amount, setAmount] = useState('');
   const [action, setAction] = useState<'deposit' | 'withdraw'>('deposit');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<Hash | null>(null);
@@ -50,8 +58,30 @@ function App() {
   const [showHistory, setShowHistory] = useState(false);
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
+  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
+  const [selectedToken, setSelectedToken] = useState(TOKENS.USDC);
 
-  const selectedToken = TOKENS.USDC;
+  // Analytics state
+  const [userAccountData, setUserAccountData] = useState<any>(null);
+  const [userReserveData, setUserReserveData] = useState<any>(null);
+  const [collateralBalance, setCollateralBalance] = useState<bigint | undefined>(undefined);
+  const [healthFactor, setHealthFactor] = useState(0);
+  const [safeTxs, setSafeTxs] = useState<any[]>([]);
+  const [safeTxsLoading, setSafeTxsLoading] = useState(false);
+  const [safeTxsError, setSafeTxsError] = useState<string | null>(null);
+  const [safeTransactions, setSafeTransactions] = useState<SafeTransaction[]>([]);
+
+  // Convert regular transactions to safe transactions when needed
+  useEffect(() => {
+    const convertedTransactions: SafeTransaction[] = transactions.map(tx => ({
+      hash: tx.hash,
+      type: tx.type === 'deposit' ? 'borrow' : 'repay' as const,
+      amount: tx.amount,
+      timestamp: tx.timestamp,
+      status: tx.status === 'success' ? 'success' : tx.status === 'pending' ? 'pending' : 'failed' as const
+    }));
+    setSafeTransactions(convertedTransactions);
+  }, [transactions]);
 
   // Read user's token balance
   const { 
@@ -169,19 +199,20 @@ function App() {
   }, [isConfirming, isSuccess, isError, txHash, action, amount]);
 
   useEffect(() => {
-    // Check for saved theme preference
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.setAttribute('data-theme', savedTheme);
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.style.setProperty('--rk-colors-connectButtonBackground', 'rgba(30, 41, 59, 0.85)');
+      root.style.setProperty('--rk-colors-connectButtonText', '#f8fafc');
+    } else {
+      root.style.setProperty('--rk-colors-connectButtonBackground', '#fff');
+      root.style.setProperty('--rk-colors-connectButtonText', '#1f2937');
     }
-  }, []);
+  }, [theme]);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -301,259 +332,215 @@ function App() {
   }, [transactions]);
 
   return (
-    <div className="min-h-screen relative">
-      {/* Theme Toggle */}
-      <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
-        {theme === 'light' ? (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-          </svg>
-        ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-        )}
-      </button>
-
-      {/* Animated Background */}
-      <div className="animated-background">
-        <div className="floating-elements">
-          <div className="floating-element"></div>
-          <div className="floating-element"></div>
-          <div className="floating-element"></div>
-          <div className="floating-element"></div>
-        </div>
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="animated-background" />
+      <div className="floating-elements">
+        <div className="floating-element" />
+        <div className="floating-element" />
+        <div className="floating-element" />
       </div>
 
-      {/* Security Shield */}
-      <div className="security-shield" title="Secure Transactions"></div>
+      <motion.button
+        onClick={toggleTheme}
+        className="theme-toggle fixed top-4 right-4 p-2 rounded-full bg-card-bg border border-card-border hover:bg-card-hover transition-colors"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        aria-label="Toggle theme"
+      >
+        {theme === 'light' ? (
+          <svg
+            className="w-5 h-5 text-primary"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+          </svg>
+        ) : (
+          <svg
+            className="w-5 h-5 text-primary"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        )}
+      </motion.button>
 
-      <div className="max-w-2xl mx-auto px-4 py-12 relative z-10">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-primary mb-2 animate-fade-in">
-            Aave Deposit
-          </h1>
-          <p className="text-lg text-secondary animate-fade-in-delayed">
-            Secure deposits and withdrawals on Gnosis Chain
-          </p>
+      <div className="max-w-4xl mx-auto space-y-8 pb-28">
+        <div className="flex justify-between items-center">
+          <h1 className="text-4xl font-bold text-primary">Aave Integration</h1>
+          <ConnectButton />
         </div>
 
-        {/* Wallet Connection */}
-        <div className="flex justify-center mb-8">
-          <div className="transform hover:scale-105 transition-transform duration-200">
-            <ConnectButton />
-          </div>
-        </div>
-
-        {/* Animated Balance Cards - Apple-like, visually differentiated */}
-        {address && (
-          <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-8 w-full">
-            {/* Wallet Balance Card */}
-            <div className="glass-growth-card relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30">
-              <div className="flex flex-col items-center">
-                <span className="mb-2 text-blue-400 flex items-center gap-2 animate-fade-in">
-                  <FaWallet className="text-xl" />
-                  <span className="font-medium text-sm tracking-wide">Wallet</span>
-                </span>
-                <div className="flex items-end justify-center space-x-2">
-                  <span className="text-4xl font-semibold text-primary tracking-tight animate-fade-in">
-                    {animatedWallet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <span className="text-lg text-secondary font-medium mb-1">{selectedToken.symbol}</span>
-                  <span className="ml-2 animate-growth-arrow">
-                    <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="10" stroke="#60a5fa" strokeWidth="2.5" fill="none" />
-                    </svg>
-                  </span>
-                </div>
-                {/* Wallet bar: percent not supplied */}
-                <div className="w-full h-2 mt-4 bg-gradient-to-r from-blue-300/30 to-blue-400/60 rounded-full overflow-hidden relative group">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-400 to-blue-500 shadow-lg animate-growth-bar"
-                    style={{ width: `${Math.max(walletPercent * 100, 5)}%`, minWidth: '5%' }}
-                  ></div>
-                  {/* Tooltip text, hidden by default, shown on hover */}
-                  <div
-                    className="absolute left-1/2 -translate-x-1/2 top-full mt-2 px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg z-30"
-                    style={{ whiteSpace: 'nowrap' }}
-                  >
-                    {totalUSDC > 0 ? `${Math.round(walletPercent * 100)}% not supplied` : 'No USDC.e'}
+        {address ? (
+          <div className="space-y-8">
+            {/* Deposit/Withdraw Card - Full Width */}
+            <div className="glass-card p-6 rounded-xl backdrop-blur-lg border border-card-border shadow-lg hover-lift">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Amount Input */}
+                <div>
+                  <label className="block text-sm font-medium text-secondary mb-2">
+                    Amount
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="input-focus w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-lg"
+                      placeholder="0.00"
+                      step="0.000001"
+                      min="0"
+                      disabled={isLoading}
+                    />
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-secondary">
+                      {selectedToken.symbol}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-            {/* Supplied Balance Card */}
-            <div
-              className="glass-growth-card relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-green-400/30 cursor-pointer"
-              onClick={() => setShowGoalCard(true)}
-              title="Click to set your supply goal"
-            >
-              <div className="flex flex-col items-center">
-                <span className="mb-2 text-green-400 flex items-center gap-2 animate-fade-in">
-                  <GiPlantSeed className="text-xl" />
-                  <span className="font-medium text-sm tracking-wide">Supplied</span>
-                </span>
-                <div className="flex items-end justify-center space-x-2">
-                  <span className="text-4xl font-semibold text-primary tracking-tight animate-fade-in">
-                    {animatedSupplied.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <span className="text-lg text-secondary font-medium mb-1">{selectedToken.symbol}</span>
-                  <span className="ml-2 animate-growth-arrow">
-                    <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
-                      <path d="M12 19V5M12 5l-5 5M12 5l5 5" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </span>
-                </div>
-                {/* Growth bar with goal */}
-                <div className="w-full h-2 mt-4 bg-gradient-to-r from-green-300/30 to-green-400/60 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-green-400 to-green-500 shadow-lg animate-growth-bar"
-                    style={{ width: `${Math.max(growthPercent * 100, 5)}%`, minWidth: '5%' }}
-                  ></div>
-                </div>
-              </div>
-              {isATokenError && (
-                <span className="text-red-500 ml-2">
-                  (Error loading supplied balance)
-                </span>
-              )}
-            </div>
-            {/* Set Goal Card (modal style) with fluid animation */}
-            {showGoalCard && (
-              <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm animate-fade-in-fast">
-                <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-2xl w-80 flex flex-col items-center transform transition-all duration-300 scale-95 opacity-0 animate-modal-in">
-                  <h3 className="text-lg font-semibold mb-4 text-primary">Set Supply Goal</h3>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={supplyGoal}
-                    onChange={e => setSupplyGoal(Number(e.target.value))}
-                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-lg mb-4 bg-transparent text-primary"
-                  />
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-2 gap-4">
                   <button
-                    className="submit-button w-full py-2 rounded-xl text-lg font-medium transition-all duration-200"
-                    onClick={() => setShowGoalCard(false)}
+                    type="button"
+                    onClick={() => setAction('deposit')}
+                    className={`action-button hover-lift p-4 rounded-xl text-lg font-medium transition-all duration-200 active:scale-95 transition-transform ${
+                      action === 'deposit' ? 'active' : ''
+                    }`}
+                    disabled={isLoading}
                   >
-                    Save
+                    Deposit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAction('withdraw')}
+                    className={`action-button hover-lift p-4 rounded-xl text-lg font-medium transition-all duration-200 active:scale-95 transition-transform ${
+                      action === 'withdraw' ? 'active' : ''
+                    }`}
+                    disabled={isLoading}
+                  >
+                    Withdraw
                   </button>
                 </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={!amount || !address || isLoading}
+                  className={`submit-button hover-lift w-full py-4 rounded-xl text-lg font-medium transition-all duration-200 ${
+                    isLoading ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {isLoading ? (
+                    <div className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Processing...
+                    </div>
+                  ) : (
+                    `${action === 'deposit' ? 'Deposit' : 'Withdraw'} ${selectedToken.symbol}`
+                  )}
+                </button>
+
+                {/* Transaction Status */}
+                {txStatus === 'pending' && (
+                  <div className="text-blue-500 text-sm mt-2 animate-fade-in flex items-center">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Transaction pending...
+                  </div>
+                )}
+                {txStatus === 'success' && (
+                  <div className="text-green-500 text-sm mt-2 animate-fade-in flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    Transaction successful!
+                  </div>
+                )}
+
+                {/* Error Message */}
+                {error && (
+                  <div className="text-red-500 text-sm mt-2 animate-fade-in flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    {error}
+                  </div>
+                )}
+
+                {/* Transaction Hash */}
+                {txHash && (
+                  <div className="text-green-500 text-sm mt-2 animate-fade-in flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Transaction submitted! Hash: {txHash}
+                  </div>
+                )}
+              </form>
+            </div>
+
+            {/* Two Column Layout for Analytics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Left Column */}
+              <div className="space-y-8">
+                {/* Position Analytics Card */}
+                <div className="glass-card hover-lift p-6 rounded-xl backdrop-blur-lg border border-card-border shadow-lg">
+                  <SafeAnalytics
+                    userAccountData={userAccountData}
+                    userReserveData={userReserveData}
+                    collateralBalance={collateralBalance}
+                    transactions={safeTransactions}
+                    theme={theme}
+                    healthFactor={healthFactor}
+                    safeTxs={safeTxs}
+                    safeTxsLoading={safeTxsLoading}
+                    safeTxsError={safeTxsError}
+                  />
+                </div>
               </div>
-            )}
+
+              {/* Right Column */}
+              <div className="space-y-8">
+                {/* Safe Status Card */}
+                <div className="glass-card hover-lift p-6 rounded-xl backdrop-blur-lg border border-card-border shadow-lg">
+                  <SafeStatusCard theme={theme} />
+                </div>
+                {/* Borrow Funds Card */}
+                <div className="glass-card hover-lift p-6 rounded-xl backdrop-blur-lg border border-card-border shadow-lg">
+                  <BorrowFundsCard theme={theme} />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="glass-card p-8 rounded-xl backdrop-blur-lg border border-card-border shadow-lg text-center">
+            <h2 className="text-2xl font-semibold mb-4 text-primary">Welcome to Aave Integration</h2>
+            <p className="text-secondary mb-6">Connect your wallet to get started</p>
+            <ConnectButton />
           </div>
         )}
-
-        {/* Main Card */}
-        <div className="glass-card rounded-2xl p-8 mb-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Amount Input */}
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-2">
-                Amount
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="input-focus w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-lg"
-                  placeholder="0.00"
-                  step="0.000001"
-                  min="0"
-                  disabled={isLoading}
-                />
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-secondary">
-                  {selectedToken.symbol}
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setAction('deposit')}
-                className={`action-button hover-lift p-4 rounded-xl text-lg font-medium transition-all duration-200 ${
-                  action === 'deposit' ? 'active' : ''
-                }`}
-                disabled={isLoading}
-              >
-                Deposit
-              </button>
-              <button
-                type="button"
-                onClick={() => setAction('withdraw')}
-                className={`action-button hover-lift p-4 rounded-xl text-lg font-medium transition-all duration-200 ${
-                  action === 'withdraw' ? 'active' : ''
-                }`}
-                disabled={isLoading}
-              >
-                Withdraw
-              </button>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={!amount || !address || isLoading}
-              className={`submit-button hover-lift w-full py-4 rounded-xl text-lg font-medium transition-all duration-200 ${
-                isLoading ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Processing...
-                </div>
-              ) : (
-                `${action === 'deposit' ? 'Deposit' : 'Withdraw'} ${selectedToken.symbol}`
-              )}
-            </button>
-
-            {/* Transaction Status */}
-            {txStatus === 'pending' && (
-              <div className="text-blue-500 text-sm mt-2 animate-fade-in flex items-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Transaction pending...
-              </div>
-            )}
-            {txStatus === 'success' && (
-              <div className="text-green-500 text-sm mt-2 animate-fade-in flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                Transaction successful!
-              </div>
-            )}
-
-            {/* Error Message */}
-            {error && (
-              <div className="text-red-500 text-sm mt-2 animate-fade-in flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                {error}
-              </div>
-            )}
-
-            {/* Transaction Hash */}
-            {txHash && (
-              <div className="text-green-500 text-sm mt-2 animate-fade-in flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                Transaction submitted! Hash: {txHash}
-              </div>
-            )}
-          </form>
-        </div>
 
         {/* Transaction History Toggle */}
         <div className="text-center mb-8">
@@ -619,6 +606,14 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* Add the token selection modal */}
+        <TokenSelectionModal
+          isOpen={isTokenModalOpen}
+          onClose={() => setIsTokenModalOpen(false)}
+          onSelectToken={setSelectedToken}
+          userAddress={address}
+        />
       </div>
     </div>
   );

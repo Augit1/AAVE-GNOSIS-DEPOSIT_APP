@@ -22,6 +22,52 @@ export const AAVE_POOL_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
+  {
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'interestRateMode', type: 'uint8' },
+      { name: 'referralCode', type: 'uint16' },
+      { name: 'onBehalfOf', type: 'address' },
+    ],
+    name: 'borrow',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'user', type: 'address' }],
+    name: 'getUserAccountData',
+    outputs: [
+      { name: 'totalCollateralBase', type: 'uint256' },
+      { name: 'totalDebtBase', type: 'uint256' },
+      { name: 'availableBorrowsBase', type: 'uint256' },
+      { name: 'currentLiquidationThreshold', type: 'uint256' },
+      { name: 'ltv', type: 'uint256' },
+      { name: 'healthFactor', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'user', type: 'address' }
+    ],
+    name: 'getUserReserveData',
+    outputs: [
+      { name: 'currentATokenBalance', type: 'uint256' },
+      { name: 'currentStableDebt', type: 'uint256' },
+      { name: 'currentVariableDebt', type: 'uint256' },
+      { name: 'principalStableDebt', type: 'uint256' },
+      { name: 'scaledVariableDebt', type: 'uint256' },
+      { name: 'stableBorrowRate', type: 'uint256' },
+      { name: 'liquidityRate', type: 'uint256' },
+      { name: 'usageAsCollateralEnabled', type: 'bool' }
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;
 
 export const ERC20_ABI = [
