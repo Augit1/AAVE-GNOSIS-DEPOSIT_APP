@@ -7,6 +7,15 @@ import { AAVE_POOL_ADDRESS, TOKENS } from './config/constants';
 import { FaWallet } from 'react-icons/fa';
 import { GiPlantSeed } from 'react-icons/gi';
 import TokenSelectionModal from './app/components/TokenSelectionModal';
+import TimePeriodModal from './app/components/TimePeriodModal';
+import ChatInterface from './app/components/ChatInterface';
+
+interface Token {
+  address: `0x${string}`;
+  decimals: number;
+  symbol: string;
+  aTokenAddress: `0x${string}`;
+}
 
 interface Transaction {
   hash: Hash;
@@ -41,6 +50,36 @@ interface AppProps {
   setTheme: React.Dispatch<React.SetStateAction<'light' | 'dark'>>;
 }
 
+const GNOSIS_BLOCKSCOUT_API = 'https://gnosis.blockscout.com/api';
+const COINGECKO_API = 'https://api.coingecko.com/api/v3';
+const CORS_PROXY = 'https://api.allorigins.win/get?url=';
+
+// Map of token addresses to CoinGecko IDs
+const TOKEN_TO_COINGECKO: { [key: string]: string } = {
+  '0x2a22f9c3b484c3629090feed35f17ff8f88f76f0': 'usd-coin', // USDC
+  '0x3ce36ea2afd0f92b64d0014c6386ac178d1133cc': 'xdai', // xDAI
+  '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1': 'weth', // WETH
+  '0x4ecaba5870353805a9f068101a40e0f32ed605c6': 'tether', // USDT
+  '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d': 'wrapped-xdai', // WXDAI
+  '0x9c58bacc331c9aa871afd802db6379a98e80cedb': 'gnosis', // GNO
+  '0x6c76971f98945ae98dd7d4dfca8711ebea946ea6': 'weth', // WETH
+  '0x1509706a6c66ca549ff0cb464de88231ddbe213b': 'weth', // WETH
+};
+
+// Rate limiting helper
+const rateLimiter = {
+  lastRequest: 0,
+  minInterval: 12000, // Increased to 12 seconds to avoid rate limits
+  async wait() {
+    const now = Date.now();
+    const timeToWait = Math.max(0, this.minInterval - (now - this.lastRequest));
+    if (timeToWait > 0) {
+      await new Promise(resolve => setTimeout(resolve, timeToWait));
+    }
+    this.lastRequest = Date.now();
+  }
+};
+
 function App({ theme, setTheme }: AppProps) {
   const [amount, setAmount] = useState('');
   const [action, setAction] = useState<'deposit' | 'withdraw'>('deposit');
@@ -55,15 +94,23 @@ function App({ theme, setTheme }: AppProps) {
   const [showHistory, setShowHistory] = useState(false);
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
-  const [selectedTokenKey, setSelectedTokenKey] = useState<string>("USDC");
+  const [selectedToken, setSelectedToken] = useState<Token>({
+    address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
+    decimals: 18,
+    symbol: '',
+    aTokenAddress: '0x0000000000000000000000000000000000000000' as `0x${string}`
+  });
   const [showTokenModal, setShowTokenModal] = useState(false);
-  const selectedToken = (TOKENS as any)[selectedTokenKey];
+  const [totalWalletValue, setTotalWalletValue] = useState(0);
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState('1d');
+  const [showTimePeriodModal, setShowTimePeriodModal] = useState(false);
+  const [tokenGrowth, setTokenGrowth] = useState<number>(0);
 
   // Native xDAI balance
   const { data: nativeBalance, isLoading: isNativeBalanceLoading } = useBalance({
     address,
     query: {
-      enabled: selectedTokenKey === 'XDAI' && !!address,
+      enabled: selectedToken.symbol === 'XDAI' && !!address,
     },
   });
 
@@ -72,16 +119,15 @@ function App({ theme, setTheme }: AppProps) {
     data: balance, 
     isError: balanceError,
     error: balanceErrorDetails,
-    isLoading: isBalanceLoading 
+    isLoading: isBalanceLoading,
+    refetch: refetchBalance
   } = useReadContract({
     address: selectedToken.address,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+    args: [address as `0x${string}`],
     query: {
-      enabled: selectedTokenKey !== 'XDAI' && !!address,
-      refetchInterval: 5000,
-      retry: 3,
+      enabled: !!address && selectedToken.address !== '0x0000000000000000000000000000000000000000',
     },
   });
 
@@ -89,20 +135,19 @@ function App({ theme, setTheme }: AppProps) {
   const { 
     data: allowance, 
     isError: allowanceError,
-    error: allowanceErrorDetails 
+    error: allowanceErrorDetails,
+    refetch: refetchAllowance
   } = useReadContract({
     address: selectedToken.address,
     abi: ERC20_ABI,
     functionName: 'allowance',
-    args: address ? [address, AAVE_POOL_ADDRESS] : undefined,
+    args: [address as `0x${string}`, AAVE_POOL_ADDRESS],
     query: {
-      enabled: !!address,
-      refetchInterval: 5000,
-      retry: 3,
+      enabled: !!address && selectedToken.address !== '0x0000000000000000000000000000000000000000',
     },
   });
 
-  // Read user's aToken (aGnoUSDCe) balance in the pool
+  // Read user's aToken balance in the pool
   const { 
     data: aTokenBalance, 
     isLoading: isATokenLoading, 
@@ -112,11 +157,9 @@ function App({ theme, setTheme }: AppProps) {
     address: selectedToken.aTokenAddress,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+    args: [address as `0x${string}`],
     query: {
-      enabled: !!address,
-      refetchInterval: 5000,
-      retry: 3,
+      enabled: !!address && selectedToken.aTokenAddress !== '0x0000000000000000000000000000000000000000',
     },
   });
 
@@ -134,6 +177,15 @@ function App({ theme, setTheme }: AppProps) {
       setTxHash(null);
     }
   }, [isSuccess, refetchATokenBalance]);
+
+  // Refetch balances when token changes
+  useEffect(() => {
+    if (address) {
+      refetchBalance();
+      refetchAllowance();
+      refetchATokenBalance();
+    }
+  }, [selectedToken.symbol, address, refetchBalance, refetchAllowance, refetchATokenBalance]);
 
   // Supply goal state (persisted)
   const [supplyGoal, setSupplyGoal] = useState(() => {
@@ -309,7 +361,7 @@ function App({ theme, setTheme }: AppProps) {
   };
 
   // Calculate animated wallet balance
-  const walletBalance = selectedTokenKey === 'XDAI'
+  const walletBalance = selectedToken.symbol === 'XDAI'
     ? (nativeBalance ? parseFloat(nativeBalance.formatted) : 0)
     : (balance ? parseFloat(formatBalance(balance)) : 0);
   const animatedWallet = useCountUp(walletBalance, 1200);
@@ -319,9 +371,8 @@ function App({ theme, setTheme }: AppProps) {
   const animatedSupplied = useCountUp(supplied, 1200);
   const growthPercent = supplyGoal > 0 ? Math.min(animatedSupplied / supplyGoal, 1) : 0;
 
-  // Wallet bar: percent of USDC.e not supplied
-  const totalUSDC = walletBalance + supplied;
-  const walletPercent = totalUSDC > 0 ? Math.min(walletBalance / totalUSDC, 1) : 0;
+  // Wallet bar: percent of selected token in total wallet value
+  const walletPercent = totalWalletValue > 0 ? Math.min(walletBalance / totalWalletValue, 1) : 0;
 
   // Save supply goal to localStorage
   useEffect(() => {
@@ -333,8 +384,18 @@ function App({ theme, setTheme }: AppProps) {
     localStorage.setItem('transactions', JSON.stringify(transactions));
   }, [transactions]);
 
+  const handleTokenSelect = (token: Token) => {
+    setSelectedToken({
+      address: token.address as `0x${string}`,
+      decimals: token.decimals,
+      symbol: token.symbol,
+      aTokenAddress: token.aTokenAddress as `0x${string}`
+    });
+    setShowTokenModal(false);
+  };
+
   return (
-    <div className="min-h-screen relative">
+    <div className="min-h-screen bg-gradient-to-b from-background-start to-background-end text-primary">
       {/* Theme Toggle */}
       <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
         {theme === 'light' ? (
@@ -365,10 +426,10 @@ function App({ theme, setTheme }: AppProps) {
         {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-primary mb-2 animate-fade-in">
-            Aave Deposit
+            Aave Assistant
           </h1>
           <p className="text-lg text-secondary animate-fade-in-delayed">
-            Secure deposits and withdrawals on Gnosis Chain
+            Your AI-powered DeFi companion
           </p>
         </div>
 
@@ -379,7 +440,7 @@ function App({ theme, setTheme }: AppProps) {
           </div>
         </div>
 
-        {/* Animated Balance Cards - Apple-like, visually differentiated */}
+        {/* Animated Balance Cards */}
         {address && (
           <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-8 w-full">
             {/* Wallet Balance Card */}
@@ -395,7 +456,6 @@ function App({ theme, setTheme }: AppProps) {
                   </span>
                   <span className="text-lg text-secondary font-medium mb-1">{selectedToken.symbol}</span>
                 </div>
-                {/* Wallet progress bar with tooltip */}
                 <div className="tooltip-container w-full mt-4">
                   <div className="progress-bar-container">
                     <div
@@ -410,210 +470,53 @@ function App({ theme, setTheme }: AppProps) {
                   </div>
                   <div className="tooltip-content">
                     <div className="tooltip-arrow" />
-                    {totalUSDC > 0 
-                      ? `${Math.round(walletPercent * 100)}% of your total USDC.e is in your wallet`
-                      : 'No USDC.e in your wallet'}
+                    {totalWalletValue > 0 
+                      ? `${Math.round(walletPercent * 100)}% of your total wallet value is in ${selectedToken.symbol}`
+                      : 'No tokens in your wallet'}
                   </div>
                 </div>
               </div>
             </div>
-            {/* Supplied Balance Card */}
-            <div
-              className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-green-400/30 cursor-pointer"
-              onClick={() => setShowGoalCard(true)}
-              title="Click to set your supply goal"
-            >
+
+            {/* Growth Card (replacing Supplied Balance Card) */}
+            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer" onClick={() => setShowTimePeriodModal(true)} title="Click to select time period">
               <div className="flex flex-col items-center">
-                <span className="mb-2 text-green-400 flex items-center gap-2 animate-fade-in">
+                <span className="mb-2 text-blue-400 flex items-center gap-2 animate-fade-in">
                   <GiPlantSeed className="text-xl" />
-                  <span className="font-medium text-sm tracking-wide">Supplied</span>
+                  <span className="font-medium text-sm tracking-wide">Wallet Allocation</span>
                 </span>
                 <div className="flex items-end justify-center space-x-2">
                   <span className="text-4xl font-semibold text-primary tracking-tight animate-fade-in">
-                    {animatedSupplied.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {Math.round(walletPercent * 100)}%
                   </span>
-                  <span className="text-lg text-secondary font-medium mb-1">{selectedToken.symbol}</span>
                 </div>
-                {/* Supply progress bar with tooltip */}
                 <div className="tooltip-container w-full mt-4">
                   <div className="progress-bar-container">
                     <div
                       className="progress-bar"
                       style={{
-                        width: `${Math.max(growthPercent * 100, 5)}%`,
+                        width: `${Math.max(walletPercent * 100, 5)}%`,
                         minWidth: '5%',
-                        '--progress-start': '#34d399',
-                        '--progress-end': '#10b981'
+                        '--progress-start': '#60a5fa',
+                        '--progress-end': '#3b82f6'
                       } as React.CSSProperties}
                     />
                   </div>
                   <div className="tooltip-content">
                     <div className="tooltip-arrow" />
-                    {supplyGoal > 0
-                      ? `${Math.round(growthPercent * 100)}% of your ${supplyGoal.toLocaleString()} USDC.e supply goal`
-                      : 'Set a supply goal to track your progress'}
+                    {totalWalletValue > 0 
+                      ? `${Math.round(walletPercent * 100)}% of your total wallet value is in ${selectedToken.symbol}`
+                      : 'No tokens in your wallet'}
                   </div>
                 </div>
               </div>
-              {isATokenError && (
-                <span className="text-red-500 ml-2">
-                  (Error loading supplied balance)
-                </span>
-              )}
             </div>
-            {/* Set Goal Card (modal style) with fluid animation */}
-            {showGoalCard && (
-              <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm animate-fade-in-fast">
-                <div className="glass-card rounded-2xl p-6 shadow-2xl w-80 flex flex-col items-center transform transition-all duration-300 scale-95 opacity-0 animate-modal-in">
-                  <h3 className="text-lg font-semibold mb-4 text-primary">Set Supply Goal</h3>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={supplyGoal}
-                    onChange={e => setSupplyGoal(Number(e.target.value))}
-                    className="w-full px-4 py-2 rounded-xl border focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-200 text-lg mb-4 bg-transparent text-primary"
-                    style={{ borderColor: 'var(--input-border)' }}
-                  />
-                  <button
-                    className="submit-button w-full py-2 rounded-xl text-lg font-medium transition-all duration-200"
-                    onClick={() => setShowGoalCard(false)}
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* Main Card */}
-        <div className="glass-card rounded-2xl p-8 mb-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Amount Input */}
-            <div>
-              <label className="block text-sm font-medium text-secondary mb-2">
-                Amount
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="input-focus w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-lg"
-                  placeholder="0.00"
-                  step="0.000001"
-                  min="0"
-                  disabled={isLoading}
-                />
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-secondary">
-                  {selectedToken.symbol}
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setAction('deposit')}
-                className={`action-button hover-lift p-4 rounded-xl text-lg font-medium transition-all duration-200 ${
-                  action === 'deposit' ? 'active' : ''
-                }`}
-                disabled={isLoading}
-              >
-                Deposit
-              </button>
-              <button
-                type="button"
-                onClick={() => setAction('withdraw')}
-                className={`action-button hover-lift p-4 rounded-xl text-lg font-medium transition-all duration-200 ${
-                  action === 'withdraw' ? 'active' : ''
-                }`}
-                disabled={isLoading}
-              >
-                Withdraw
-              </button>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={!amount || !address || isLoading}
-              className={`submit-button hover-lift w-full py-4 rounded-xl text-lg font-medium transition-all duration-200 ${
-                isLoading ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Processing...
-                </div>
-              ) : (
-                `${action === 'deposit' ? 'Deposit' : 'Withdraw'} ${selectedToken.symbol}`
-              )}
-            </button>
-
-            {/* Transaction Status */}
-            {txStatus === 'pending' && (
-              <div className="text-blue-500 text-sm mt-2 animate-fade-in flex items-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Transaction pending...
-              </div>
-            )}
-            {txStatus === 'success' && (
-              <div className="text-green-500 text-sm mt-2 animate-fade-in flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                Transaction successful!
-              </div>
-            )}
-
-            {/* Error Message */}
-            {error && (
-              <div className="text-red-500 text-sm mt-2 animate-fade-in flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                {error}
-              </div>
-            )}
-
-            {/* Transaction Hash */}
-            {txHash && (
-              <div className="text-green-500 text-sm mt-2 animate-fade-in flex items-center">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                Transaction submitted! Hash: {txHash}
-              </div>
-            )}
-          </form>
-        </div>
-
-        {/* Transaction History Toggle */}
-        <div className="text-center mb-8">
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="text-secondary hover:text-primary transition-colors duration-200 flex items-center mx-auto"
-          >
-            <span>{showHistory ? 'Hide' : 'Show'} Transaction History</span>
-            <svg
-              className={`w-4 h-4 ml-2 transform transition-transform duration-200 ${showHistory ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-            </svg>
-          </button>
+        {/* Chat Interface */}
+        <div className="glass-card rounded-2xl p-8 mb-8 bg-opacity-50 border border-blue-400/30 hover-lift">
+          <ChatInterface theme={theme} />
         </div>
 
         {/* Transaction History */}
@@ -667,9 +570,18 @@ function App({ theme, setTheme }: AppProps) {
         <TokenSelectionModal
           open={showTokenModal}
           onClose={() => setShowTokenModal(false)}
-          onSelect={(key) => setSelectedTokenKey(key)}
-          selectedTokenKey={selectedTokenKey}
-          tokens={TOKENS}
+          onSelect={handleTokenSelect}
+          selectedTokenAddress={selectedToken.address}
+          theme={theme}
+          onTotalValueUpdate={setTotalWalletValue}
+        />
+
+        {/* Time Period Modal */}
+        <TimePeriodModal
+          open={showTimePeriodModal}
+          onClose={() => setShowTimePeriodModal(false)}
+          onSelect={setSelectedTimePeriod}
+          selectedPeriod={selectedTimePeriod}
           theme={theme}
         />
       </div>
