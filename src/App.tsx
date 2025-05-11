@@ -127,7 +127,7 @@ function App({ theme, setTheme }: AppProps) {
     functionName: 'balanceOf',
     args: [address as `0x${string}`],
     query: {
-      enabled: !!address && selectedToken.address !== '0x0000000000000000000000000000000000000000',
+      enabled: !!address && selectedToken.address !== '0x0000000000000000000000000000000000000000' && selectedToken.symbol !== '',
     },
   });
 
@@ -143,7 +143,7 @@ function App({ theme, setTheme }: AppProps) {
     functionName: 'allowance',
     args: [address as `0x${string}`, AAVE_POOL_ADDRESS],
     query: {
-      enabled: !!address && selectedToken.address !== '0x0000000000000000000000000000000000000000',
+      enabled: !!address && selectedToken.address !== '0x0000000000000000000000000000000000000000' && selectedToken.symbol !== '',
     },
   });
 
@@ -159,7 +159,7 @@ function App({ theme, setTheme }: AppProps) {
     functionName: 'balanceOf',
     args: [address as `0x${string}`],
     query: {
-      enabled: !!address && selectedToken.aTokenAddress !== '0x0000000000000000000000000000000000000000',
+      enabled: !!address && selectedToken.aTokenAddress !== '0x0000000000000000000000000000000000000000' && selectedToken.symbol !== '',
     },
   });
 
@@ -202,6 +202,7 @@ function App({ theme, setTheme }: AppProps) {
         address: selectedToken.address,
         userAddress: address
       });
+      setError('Failed to read token balance. Please try again.');
     }
     if (allowanceError) {
       console.error('Error reading allowance:', {
@@ -210,6 +211,7 @@ function App({ theme, setTheme }: AppProps) {
         address: selectedToken.address,
         userAddress: address
       });
+      setError('Failed to read token allowance. Please try again.');
     }
   }, [balanceError, allowanceError, balanceErrorDetails, allowanceErrorDetails, selectedToken, address]);
 

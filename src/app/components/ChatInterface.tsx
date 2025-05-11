@@ -136,10 +136,14 @@ Remember: You are a helpful, precise, and secure DeFi adviser for Gnosis Chain o
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get response');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get response');
       }
 
       const data = await response.json();
+      if (!data.message) {
+        throw new Error('Invalid response format');
+      }
       setMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
     } catch (error) {
       console.error('Error:', error);
