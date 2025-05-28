@@ -105,6 +105,10 @@ function App({ theme, setTheme }: AppProps) {
   const [selectedTimePeriod, setSelectedTimePeriod] = useState('1d');
   const [showTimePeriodModal, setShowTimePeriodModal] = useState(false);
   const [tokenGrowth, setTokenGrowth] = useState<number>(0);
+  const [tokenPrice, setTokenPrice] = useState<number | null>(null);
+  const [tokenPriceChange, setTokenPriceChange] = useState<number | null>(null);
+  const [selectedPricePeriod, setSelectedPricePeriod] = useState<'1h' | '6h' | '24h' | '7d' | '30d'>('24h');
+  const [showPricePeriodModal, setShowPricePeriodModal] = useState(false);
 
   // Native xDAI balance
   const { data: nativeBalance, isLoading: isNativeBalanceLoading } = useBalance({
@@ -386,6 +390,45 @@ function App({ theme, setTheme }: AppProps) {
     localStorage.setItem('transactions', JSON.stringify(transactions));
   }, [transactions]);
 
+  // Fetch token price and price change when selectedToken or selectedPricePeriod changes
+  useEffect(() => {
+    async function fetchTokenPrice() {
+      if (!selectedToken || !selectedToken.address) {
+        setTokenPrice(null);
+        setTokenPriceChange(null);
+        return;
+      }
+      const contractAddress = selectedToken.address.toLowerCase();
+      let price = null;
+      let priceChange = null;
+      try {
+        const url = `https://api.dexscreener.com/latest/dex/tokens/${contractAddress}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.pairs && data.pairs.length > 0) {
+          const pair = data.pairs.find((p: any) => p.chainId === 'gnosischain');
+          price = pair?.priceUsd ? parseFloat(pair.priceUsd) : null;
+          // Map selectedPricePeriod to DexScreener key
+          const periodMap: Record<string, string> = { '1h': 'h1', '6h': 'h6', '24h': 'h24', '7d': 'd7', '30d': 'd30' };
+          const key = periodMap[selectedPricePeriod] || 'h24';
+          if (pair?.priceChange && key in pair.priceChange) {
+            priceChange = pair.priceChange[key];
+          } else if (pair?.priceChange && 'h24' in pair.priceChange) {
+            priceChange = pair.priceChange['h24'];
+          } else {
+            priceChange = null;
+          }
+        }
+        setTokenPrice(price || null);
+        setTokenPriceChange(priceChange !== null ? Number(priceChange) : null);
+      } catch (e) {
+        setTokenPrice(null);
+        setTokenPriceChange(null);
+      }
+    }
+    fetchTokenPrice();
+  }, [selectedToken, selectedPricePeriod]);
+
   const handleTokenSelect = (token: Token) => {
     setSelectedToken({
       address: token.address as `0x${string}`,
@@ -446,8 +489,8 @@ function App({ theme, setTheme }: AppProps) {
         {address && (
           <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-8 w-full">
             {/* Wallet Balance Card */}
-            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer" onClick={() => setShowTokenModal(true)} title="Click to select token">
-              <div className="flex flex-col items-center">
+            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer min-h-[120px] flex flex-col justify-between" onClick={() => setShowTokenModal(true)} title="Click to select token">
+              <div className="flex flex-col items-center flex-1 justify-center">
                 <span className="mb-2 text-blue-400 flex items-center gap-2 animate-fade-in">
                   <FaWallet className="text-xl" />
                   <span className="font-medium text-sm tracking-wide">Wallet</span>
@@ -458,6 +501,13 @@ function App({ theme, setTheme }: AppProps) {
                   </span>
                   <span className="text-lg text-secondary font-medium mb-1">{selectedToken.symbol}</span>
                 </div>
+                {tokenPrice !== null && (
+                  <div className="flex items-center mt-2">
+                    <span className="text-lg font-bold text-blue-400">
+                      1 {selectedToken.symbol} = {tokenPrice.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}$
+                    </span>
+                  </div>
+                )}
                 <div className="tooltip-container w-full mt-4">
                   <div className="progress-bar-container">
                     <div
@@ -480,35 +530,52 @@ function App({ theme, setTheme }: AppProps) {
               </div>
             </div>
 
-            {/* Growth Card (replacing Supplied Balance Card) */}
-            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer" onClick={() => setShowTimePeriodModal(true)} title="Click to select time period">
-              <div className="flex flex-col items-center">
+            {/* Total Value in USD Card (was Token Price Change) */}
+            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer min-h-[120px] flex flex-col justify-between" title="Total value of this token in USD" onClick={() => setShowPricePeriodModal(true)}>
+              <div className="flex flex-col items-center flex-1 justify-center">
                 <span className="mb-2 text-blue-400 flex items-center gap-2 animate-fade-in">
                   <GiPlantSeed className="text-xl" />
-                  <span className="font-medium text-sm tracking-wide">Wallet Allocation</span>
+                  <span className="font-medium text-sm tracking-wide">Total Value</span>
                 </span>
                 <div className="flex items-end justify-center space-x-2">
                   <span className="text-4xl font-semibold text-primary tracking-tight animate-fade-in">
-                    {Math.round(walletPercent * 100)}%
+                    {tokenPrice !== null && walletBalance !== null
+                      ? `$${(tokenPrice * walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : '--'}
                   </span>
+                  <span className="text-lg text-secondary font-medium mb-1">USD</span>
+                </div>
+                <div className="flex items-center mt-2">
+                  {tokenPriceChange !== null && (
+                    <span className={`text-lg font-bold ${tokenPriceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {tokenPriceChange >= 0 ? '+' : ''}
+                      {tokenPriceChange.toFixed(2)}%
+                    </span>
+                  )}
                 </div>
                 <div className="tooltip-container w-full mt-4">
                   <div className="progress-bar-container">
                     <div
                       className="progress-bar"
                       style={{
-                        width: `${Math.max(walletPercent * 100, 5)}%`,
+                        width: tokenPriceChange !== null ? `${Math.min(Math.abs(tokenPriceChange), 100)}%` : '100%',
                         minWidth: '5%',
-                        '--progress-start': '#60a5fa',
-                        '--progress-end': '#3b82f6'
+                        background: tokenPriceChange !== null
+                          ? (tokenPriceChange >= 0
+                              ? 'linear-gradient(90deg, #4ade80, #22d3ee)'
+                              : 'linear-gradient(90deg, #f87171, #fbbf24)')
+                          : 'linear-gradient(90deg, #60a5fa, #3b82f6)'
                       } as React.CSSProperties}
+                      title={tokenPrice !== null ? `${tokenPrice.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} $/token` : ''}
                     />
                   </div>
                   <div className="tooltip-content">
                     <div className="tooltip-arrow" />
-                    {totalWalletValue > 0 
-                      ? `${Math.round(walletPercent * 100)}% of your total wallet value is in ${selectedToken.symbol}`
-                      : 'No tokens in your wallet'}
+                    {tokenPriceChange !== null
+                      ? `Price ${tokenPriceChange >= 0 ? 'increased' : 'decreased'} by ${tokenPriceChange.toFixed(2)}% over the last ${selectedPricePeriod}`
+                      : (tokenPrice !== null && walletBalance !== null
+                          ? `You own ${(walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${selectedToken.symbol} ≈ $${(tokenPrice * walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : 'No price data available')}
                   </div>
                 </div>
               </div>
@@ -585,6 +652,16 @@ function App({ theme, setTheme }: AppProps) {
           onSelect={setSelectedTimePeriod}
           selectedPeriod={selectedTimePeriod}
           theme={theme}
+        />
+
+        {/* Price Period Modal */}
+        <TimePeriodModal
+          open={showPricePeriodModal}
+          onClose={() => setShowPricePeriodModal(false)}
+          onSelect={(period) => setSelectedPricePeriod(period as typeof selectedPricePeriod)}
+          selectedPeriod={selectedPricePeriod}
+          theme={theme}
+          periods={['1h', '6h', '24h', '7d', '30d']}
         />
       </div>
     </div>

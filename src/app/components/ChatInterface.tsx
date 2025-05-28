@@ -23,7 +23,7 @@ interface LinkProps extends ComponentProps {
 }
 
 const components: Components = {
-  p: ({ children }: ComponentProps) => <p className="mb-2">{children}</p>,
+  p: ({ children }: ComponentProps) => <p className="my-1">{children}</p>,
   strong: ({ children }: ComponentProps) => <strong className="font-bold">{children}</strong>,
   em: ({ children }: ComponentProps) => <em className="italic">{children}</em>,
   code: ({ children }: ComponentProps) => <code className="bg-black/20 rounded px-1">{children}</code>,
@@ -90,6 +90,11 @@ Strictly follow these rules:
 - Never suggest or mention opportunities outside the Gnosis Chain or outside the curated list.
 - If a user asks about a strategy, token, or protocol not in the curated list, politely inform them you can only discuss strategies from the approved list.
 - Never request or suggest users share private keys, seed phrases, or sensitive information.
+
+Wallet Connection Awareness:
+- You can access the user's wallet content when connected: ${isConnected ? 'Wallet is connected' : 'No wallet connected'}.
+- If no wallet is connected, first ask the user to connect their wallet to the website before proceeding with any analysis or recommendations.
+- Once the wallet is connected, you can analyze their holdings and provide personalized advice.
 
 Personalize your advice:
 - Always analyze the user's current Gnosis Chain wallet holdings: ${holdings}.
@@ -182,7 +187,7 @@ Remember: You are a helpful, precise, and secure DeFi adviser for Gnosis Chain o
               }`}
             >
               <div
-                className={`max-w-[80%] rounded-lg py-2 px-3 ${
+                className={`max-w-[80%] rounded-lg py-1.5 px-3 ${
                   message.role === 'user'
                     ? 'bg-blue-500/90 text-white'
                     : message.error

@@ -128,11 +128,7 @@ const TokenSelectionModal: React.FC<TokenSelectionModalProps> = ({ open, onClose
                     className={`w-full flex items-center justify-between px-4 py-2 rounded-xl transition-all duration-150 text-lg font-medium ${selectedClass}`}
                     onClick={() => handleTokenSelect(token)}
                   >
-                    <div className="flex flex-col items-start">
-                      <span>{token.symbol}</span>
-                      <span className="text-xs text-secondary">Balance: {token.formattedBalance}</span>
-                    </div>
-                    <span className="text-xs text-secondary">{token.contractAddress.slice(0, 6)}...{token.contractAddress.slice(-4)}</span>
+                    <span>{token.symbol}</span>
                   </button>
                 );
               })

@@ -6,11 +6,13 @@ interface TimePeriodModalProps {
   onSelect: (period: string) => void;
   selectedPeriod: string;
   theme: 'light' | 'dark';
+  periods?: string[];
 }
 
-const TIME_PERIODS = [
+const DEFAULT_TIME_PERIODS = [
   { value: '1h', label: '1 Hour' },
-  { value: '1d', label: '1 Day' },
+  { value: '6h', label: '6 Hours' },
+  { value: '24h', label: '24 Hours' },
   { value: '7d', label: '7 Days' },
   { value: '30d', label: '30 Days' },
 ];
@@ -21,15 +23,25 @@ const TimePeriodModal: React.FC<TimePeriodModalProps> = ({
   onSelect,
   selectedPeriod,
   theme,
+  periods,
 }) => {
   if (!open) return null;
+
+  // Build periods list
+  const periodsList = (periods || []).length > 0
+    ? periods!.map((p) => {
+        // Try to match label from default, fallback to value
+        const found = DEFAULT_TIME_PERIODS.find((d) => d.value === p);
+        return found || { value: p, label: p };
+      })
+    : DEFAULT_TIME_PERIODS;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm animate-fade-in-fast">
       <div className="glass-card rounded-2xl p-6 shadow-2xl w-96 flex flex-col items-center animate-modal-in">
         <h3 className="text-lg font-semibold mb-4 text-primary">Select Time Period</h3>
         <div className="w-full space-y-2 mb-4">
-          {TIME_PERIODS.map((period) => {
+          {periodsList.map((period) => {
             const isSelected = period.value === selectedPeriod;
             const selectedClass = isSelected
               ? theme === 'dark'
