@@ -109,6 +109,7 @@ function App({ theme, setTheme }: AppProps) {
   const [tokenPriceChange, setTokenPriceChange] = useState<number | null>(null);
   const [selectedPricePeriod, setSelectedPricePeriod] = useState<'1h' | '6h' | '24h' | '7d' | '30d'>('24h');
   const [showPricePeriodModal, setShowPricePeriodModal] = useState(false);
+  const [availablePricePeriods, setAvailablePricePeriods] = useState<string[]>(['1h', '6h', '24h', '7d', '30d']);
 
   // Native xDAI balance
   const { data: nativeBalance, isLoading: isNativeBalanceLoading } = useBalance({
@@ -406,17 +407,42 @@ function App({ theme, setTheme }: AppProps) {
         const res = await fetch(url);
         const data = await res.json();
         if (data.pairs && data.pairs.length > 0) {
-          const pair = data.pairs.find((p: any) => p.chainId === 'gnosischain');
-          price = pair?.priceUsd ? parseFloat(pair.priceUsd) : null;
-          // Map selectedPricePeriod to DexScreener key
-          const periodMap: Record<string, string> = { '1h': 'h1', '6h': 'h6', '24h': 'h24', '7d': 'd7', '30d': 'd30' };
-          const key = periodMap[selectedPricePeriod] || 'h24';
-          if (pair?.priceChange && key in pair.priceChange) {
-            priceChange = pair.priceChange[key];
-          } else if (pair?.priceChange && 'h24' in pair.priceChange) {
-            priceChange = pair.priceChange['h24'];
-          } else {
-            priceChange = null;
+          // First try to find the Gnosis pair for price
+          const gnosisPair = data.pairs.find((p: any) => p.chainId === 'gnosischain');
+          price = gnosisPair?.priceUsd ? parseFloat(gnosisPair.priceUsd) : null;
+
+          // Find the most liquid pair across all chains for price change
+          const mostLiquidPair = data.pairs.reduce((best: any, current: any) => {
+            const bestLiquidity = best?.liquidity?.usd || 0;
+            const currentLiquidity = current?.liquidity?.usd || 0;
+            return currentLiquidity > bestLiquidity ? current : best;
+          }, null);
+
+          if (mostLiquidPair?.priceChange) {
+            const periodMap: Record<string, string> = { '1h': 'h1', '6h': 'h6', '24h': 'h24', '7d': 'd7', '30d': 'd30' };
+            const key = periodMap[selectedPricePeriod] || 'h24';
+            
+            // Get available periods from the price change data
+            const availablePeriods = Object.keys(mostLiquidPair.priceChange)
+              .map(k => Object.entries(periodMap).find(([_, v]) => v === k)?.[0])
+              .filter((p): p is string => p !== undefined);
+            
+            setAvailablePricePeriods(availablePeriods.length > 0 ? availablePeriods : ['24h']);
+
+            // Try to get price change for selected period
+            if (key in mostLiquidPair.priceChange) {
+              priceChange = mostLiquidPair.priceChange[key];
+            } else {
+              // If selected period not available, find the most recent period with data
+              const availableKeys = Object.keys(mostLiquidPair.priceChange);
+              if (availableKeys.length > 0) {
+                // Sort periods by recency (h1 > h6 > h24 > d7 > d30)
+                const periodOrder = ['h1', 'h6', 'h24', 'd7', 'd30'];
+                const mostRecentKey = availableKeys
+                  .sort((a, b) => periodOrder.indexOf(a) - periodOrder.indexOf(b))[0];
+                priceChange = mostLiquidPair.priceChange[mostRecentKey];
+              }
+            }
           }
         }
         setTokenPrice(price || null);
@@ -661,7 +687,7 @@ function App({ theme, setTheme }: AppProps) {
           onSelect={(period) => setSelectedPricePeriod(period as typeof selectedPricePeriod)}
           selectedPeriod={selectedPricePeriod}
           theme={theme}
-          periods={['1h', '6h', '24h', '7d', '30d']}
+          periods={availablePricePeriods}
         />
       </div>
     </div>
