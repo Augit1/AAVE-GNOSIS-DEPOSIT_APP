@@ -515,7 +515,7 @@ function App({ theme, setTheme }: AppProps) {
         {address && (
           <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-8 w-full">
             {/* Wallet Balance Card */}
-            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer min-h-[120px] flex flex-col justify-between" onClick={() => setShowTokenModal(true)} title="Click to select token">
+            <div className={`glass-growth-card hover-lift relative p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer min-h-[120px] flex flex-col justify-between ${tokenPrice === null ? 'w-full max-w-2xl' : 'w-full max-w-xs'}`} onClick={() => setShowTokenModal(true)} title="Click to select token">
               <div className="flex flex-col items-center flex-1 justify-center">
                 <span className="mb-2 text-blue-400 flex items-center gap-2 animate-fade-in">
                   <FaWallet className="text-xl" />
@@ -556,56 +556,58 @@ function App({ theme, setTheme }: AppProps) {
               </div>
             </div>
 
-            {/* Total Value in USD Card (was Token Price Change) */}
-            <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer min-h-[120px] flex flex-col justify-between" title="Total value of this token in USD" onClick={() => setShowPricePeriodModal(true)}>
-              <div className="flex flex-col items-center flex-1 justify-center">
-                <span className="mb-2 text-blue-400 flex items-center gap-2 animate-fade-in">
-                  <GiPlantSeed className="text-xl" />
-                  <span className="font-medium text-sm tracking-wide">Total Value</span>
-                </span>
-                <div className="flex items-end justify-center space-x-2">
-                  <span className="text-4xl font-semibold text-primary tracking-tight animate-fade-in">
-                    {tokenPrice !== null && walletBalance !== null
-                      ? `$${(tokenPrice * walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : '--'}
+            {/* Total Value in USD Card */}
+            {tokenPrice !== null && (
+              <div className="glass-growth-card hover-lift relative w-full max-w-xs p-6 rounded-2xl shadow-lg mb-2 border border-blue-400/30 cursor-pointer min-h-[120px] flex flex-col justify-between" title="Total value of this token in USD" onClick={() => setShowPricePeriodModal(true)}>
+                <div className="flex flex-col items-center flex-1 justify-center">
+                  <span className="mb-2 text-blue-400 flex items-center gap-2 animate-fade-in">
+                    <GiPlantSeed className="text-xl" />
+                    <span className="font-medium text-sm tracking-wide">Total Value</span>
                   </span>
-                  <span className="text-lg text-secondary font-medium mb-1">USD</span>
-                </div>
-                <div className="flex items-center mt-2">
-                  {tokenPriceChange !== null && (
-                    <span className={`text-lg font-bold ${tokenPriceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {tokenPriceChange >= 0 ? '+' : ''}
-                      {tokenPriceChange.toFixed(2)}%
+                  <div className="flex items-end justify-center space-x-2">
+                    <span className="text-4xl font-semibold text-primary tracking-tight animate-fade-in">
+                      {tokenPrice !== null && walletBalance !== null
+                        ? `$${(tokenPrice * walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : '--'}
                     </span>
-                  )}
-                </div>
-                <div className="tooltip-container w-full mt-4">
-                  <div className="progress-bar-container">
-                    <div
-                      className="progress-bar"
-                      style={{
-                        width: tokenPriceChange !== null ? `${Math.min(Math.abs(tokenPriceChange), 100)}%` : '100%',
-                        minWidth: '5%',
-                        background: tokenPriceChange !== null
-                          ? (tokenPriceChange >= 0
-                              ? 'linear-gradient(90deg, #4ade80, #22d3ee)'
-                              : 'linear-gradient(90deg, #f87171, #fbbf24)')
-                          : 'linear-gradient(90deg, #60a5fa, #3b82f6)'
-                      } as React.CSSProperties}
-                      title={tokenPrice !== null ? `${tokenPrice.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} $/token` : ''}
-                    />
+                    <span className="text-lg text-secondary font-medium mb-1">USD</span>
                   </div>
-                  <div className="tooltip-content">
-                    <div className="tooltip-arrow" />
-                    {tokenPriceChange !== null
-                      ? `Price ${tokenPriceChange >= 0 ? 'increased' : 'decreased'} by ${tokenPriceChange.toFixed(2)}% over the last ${selectedPricePeriod}`
-                      : (tokenPrice !== null && walletBalance !== null
-                          ? `You own ${(walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${selectedToken.symbol} ≈ $${(tokenPrice * walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                          : 'No price data available')}
+                  <div className="flex items-center mt-2">
+                    {tokenPriceChange !== null && (
+                      <span className={`text-lg font-bold ${tokenPriceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {tokenPriceChange >= 0 ? '+' : ''}
+                        {tokenPriceChange.toFixed(2)}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="tooltip-container w-full mt-4">
+                    <div className="progress-bar-container">
+                      <div
+                        className="progress-bar"
+                        style={{
+                          width: tokenPriceChange !== null ? `${Math.min(Math.abs(tokenPriceChange), 100)}%` : '100%',
+                          minWidth: '5%',
+                          background: tokenPriceChange !== null
+                            ? (tokenPriceChange >= 0
+                                ? 'linear-gradient(90deg, #4ade80, #22d3ee)'
+                                : 'linear-gradient(90deg, #f87171, #fbbf24)')
+                            : 'linear-gradient(90deg, #60a5fa, #3b82f6)'
+                        } as React.CSSProperties}
+                        title={tokenPrice !== null ? `${tokenPrice.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} $/token` : ''}
+                      />
+                    </div>
+                    <div className="tooltip-content">
+                      <div className="tooltip-arrow" />
+                      {tokenPriceChange !== null
+                        ? `Price ${tokenPriceChange >= 0 ? 'increased' : 'decreased'} by ${tokenPriceChange.toFixed(2)}% over the last ${selectedPricePeriod}`
+                        : (tokenPrice !== null && walletBalance !== null
+                            ? `You own ${(walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${selectedToken.symbol} ≈ $${(tokenPrice * walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : 'No price data available')}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
