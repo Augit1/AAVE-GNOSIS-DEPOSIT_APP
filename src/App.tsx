@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
+import { useAccount, useReadContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { parseUnits, formatUnits, Hash } from 'viem';
-import { AAVE_POOL_ABI, ERC20_ABI } from './config/abis';
-import { AAVE_POOL_ADDRESS, TOKENS } from './config/constants';
+import { formatUnits, Hash } from 'viem';
+import { ERC20_ABI } from './config/abis';
+import { AAVE_POOL_ADDRESS } from './config/constants';
 import { FaWallet } from 'react-icons/fa';
 import { GiPlantSeed } from 'react-icons/gi';
 import TokenSelectionModal from './app/components/TokenSelectionModal';
@@ -50,50 +50,12 @@ interface AppProps {
   setTheme: React.Dispatch<React.SetStateAction<'light' | 'dark'>>;
 }
 
-const GNOSIS_BLOCKSCOUT_API = 'https://gnosis.blockscout.com/api';
-const COINGECKO_API = 'https://api.coingecko.com/api/v3';
-const CORS_PROXY = 'https://api.allorigins.win/get?url=';
-
-// Map of token addresses to CoinGecko IDs
-const TOKEN_TO_COINGECKO: { [key: string]: string } = {
-  '0x2a22f9c3b484c3629090feed35f17ff8f88f76f0': 'usd-coin', // USDC
-  '0x3ce36ea2afd0f92b64d0014c6386ac178d1133cc': 'xdai', // xDAI
-  '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1': 'weth', // WETH
-  '0x4ecaba5870353805a9f068101a40e0f32ed605c6': 'tether', // USDT
-  '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d': 'wrapped-xdai', // WXDAI
-  '0x9c58bacc331c9aa871afd802db6379a98e80cedb': 'gnosis', // GNO
-  '0x6c76971f98945ae98dd7d4dfca8711ebea946ea6': 'weth', // WETH
-  '0x1509706a6c66ca549ff0cb464de88231ddbe213b': 'weth', // WETH
-};
-
-// Rate limiting helper
-const rateLimiter = {
-  lastRequest: 0,
-  minInterval: 12000, // Increased to 12 seconds to avoid rate limits
-  async wait() {
-    const now = Date.now();
-    const timeToWait = Math.max(0, this.minInterval - (now - this.lastRequest));
-    if (timeToWait > 0) {
-      await new Promise(resolve => setTimeout(resolve, timeToWait));
-    }
-    this.lastRequest = Date.now();
-  }
-};
-
 function App({ theme, setTheme }: AppProps) {
   const [amount, setAmount] = useState('');
-  const [action, setAction] = useState<'deposit' | 'withdraw'>('deposit');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [action] = useState<'deposit' | 'withdraw'>('deposit');
   const [txHash, setTxHash] = useState<Hash | null>(null);
   const [txStatus, setTxStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('transactions');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [showHistory, setShowHistory] = useState(false);
   const { address } = useAccount();
-  const { writeContractAsync } = useWriteContract();
   const [selectedToken, setSelectedToken] = useState<Token>({
     address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
     decimals: 18,
@@ -104,7 +66,6 @@ function App({ theme, setTheme }: AppProps) {
   const [totalWalletValue, setTotalWalletValue] = useState(0);
   const [selectedTimePeriod, setSelectedTimePeriod] = useState('1d');
   const [showTimePeriodModal, setShowTimePeriodModal] = useState(false);
-  const [tokenGrowth, setTokenGrowth] = useState<number>(0);
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
   const [tokenPriceChange, setTokenPriceChange] = useState<number | null>(null);
   const [selectedPricePeriod, setSelectedPricePeriod] = useState<'1h' | '6h' | '24h' | '7d' | '30d'>('24h');
@@ -112,7 +73,7 @@ function App({ theme, setTheme }: AppProps) {
   const [availablePricePeriods, setAvailablePricePeriods] = useState<string[]>(['1h', '6h', '24h', '7d', '30d']);
 
   // Native xDAI balance
-  const { data: nativeBalance, isLoading: isNativeBalanceLoading } = useBalance({
+  const { data: nativeBalance } = useBalance({
     address,
     query: {
       enabled: selectedToken.symbol === 'XDAI' && !!address,
@@ -124,7 +85,6 @@ function App({ theme, setTheme }: AppProps) {
     data: balance, 
     isError: balanceError,
     error: balanceErrorDetails,
-    isLoading: isBalanceLoading,
     refetch: refetchBalance
   } = useReadContract({
     address: selectedToken.address,
@@ -138,7 +98,6 @@ function App({ theme, setTheme }: AppProps) {
 
   // Read token allowance
   const { 
-    data: allowance, 
     isError: allowanceError,
     error: allowanceErrorDetails,
     refetch: refetchAllowance
@@ -154,9 +113,6 @@ function App({ theme, setTheme }: AppProps) {
 
   // Read user's aToken balance in the pool
   const { 
-    data: aTokenBalance, 
-    isLoading: isATokenLoading, 
-    isError: isATokenError,
     refetch: refetchATokenBalance 
   } = useReadContract({
     address: selectedToken.aTokenAddress,
@@ -193,11 +149,10 @@ function App({ theme, setTheme }: AppProps) {
   }, [selectedToken.symbol, address, refetchBalance, refetchAllowance, refetchATokenBalance]);
 
   // Supply goal state (persisted)
-  const [supplyGoal, setSupplyGoal] = useState(() => {
+  const [supplyGoal] = useState(() => {
     const saved = localStorage.getItem('supplyGoal');
     return saved ? parseFloat(saved) : 1000;
   });
-  const [showGoalCard, setShowGoalCard] = useState(false);
 
   useEffect(() => {
     if (balanceError) {
@@ -207,7 +162,6 @@ function App({ theme, setTheme }: AppProps) {
         address: selectedToken.address,
         userAddress: address
       });
-      setError('Failed to read token balance. Please try again.');
     }
     if (allowanceError) {
       console.error('Error reading allowance:', {
@@ -216,7 +170,6 @@ function App({ theme, setTheme }: AppProps) {
         address: selectedToken.address,
         userAddress: address
       });
-      setError('Failed to read token allowance. Please try again.');
     }
   }, [balanceError, allowanceError, balanceErrorDetails, allowanceErrorDetails, selectedToken, address]);
 
@@ -226,36 +179,14 @@ function App({ theme, setTheme }: AppProps) {
     } else if (isSuccess) {
       setTxStatus('success');
       setAmount('');
-      setIsLoading(false);
-      // Add transaction to history
-      if (txHash) {
-        setTransactions(prev => [{
-          hash: txHash,
-          type: action,
-          amount,
-          status: 'success',
-          timestamp: Date.now(),
-        }, ...prev]);
-      }
       setTxHash(null);
     } else if (isError) {
       setTxStatus('error');
-      setIsLoading(false);
-      // Add failed transaction to history
-      if (txHash) {
-        setTransactions(prev => [{
-          hash: txHash,
-          type: action,
-          amount,
-          status: 'error',
-          timestamp: Date.now(),
-        }, ...prev]);
-      }
       setTxHash(null);
     } else if (txStatus !== 'idle') {
       setTxStatus('idle');
     }
-  }, [isConfirming, isSuccess, isError, txHash, action, amount]);
+  }, [isConfirming, isSuccess, isError, txHash]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -272,85 +203,6 @@ function App({ theme, setTheme }: AppProps) {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || !address) return;
-
-    setIsLoading(true);
-    setError(null);
-    setTxHash(null);
-    setTxStatus('pending');
-
-    try {
-      const amountInWei = parseUnits(amount as `${number}`, selectedToken.decimals);
-
-      // Check balance
-      if (action === 'deposit') {
-        if (balance && amountInWei > BigInt(balance)) {
-          throw new Error('Insufficient wallet balance');
-        }
-      } else if (action === 'withdraw') {
-        if (aTokenBalance && amountInWei > BigInt(aTokenBalance)) {
-          throw new Error('Insufficient supplied balance');
-        }
-      }
-
-      if (action === 'deposit') {
-        // Check allowance
-        if (allowance && amountInWei > BigInt(allowance)) {
-          // First approve the Aave Pool to spend tokens
-          const approveResult = await writeContractAsync({
-            address: selectedToken.address,
-            abi: ERC20_ABI,
-            functionName: 'approve',
-            args: [AAVE_POOL_ADDRESS, amountInWei],
-          });
-          setTxHash(approveResult);
-
-          // Wait for approval transaction to be confirmed
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-        }
-
-        // Then deposit
-        const depositResult = await writeContractAsync({
-          address: AAVE_POOL_ADDRESS,
-          abi: AAVE_POOL_ABI,
-          functionName: 'supply',
-          args: [selectedToken.address, amountInWei, address, 0],
-        });
-        setTxHash(depositResult);
-      } else {
-        // Withdraw
-        const withdrawResult = await writeContractAsync({
-          address: AAVE_POOL_ADDRESS,
-          abi: AAVE_POOL_ABI,
-          functionName: 'withdraw',
-          args: [selectedToken.address, amountInWei, address],
-        });
-        setTxHash(withdrawResult);
-      }
-    } catch (err: any) {
-      // User-friendly error handling
-      let userMessage = 'Something went wrong. Please try again.';
-      if (err?.message?.includes('User denied transaction signature')) {
-        userMessage = 'Transaction cancelled.';
-      } else if (err?.message?.toLowerCase().includes('insufficient balance')) {
-        userMessage = 'Insufficient balance.';
-      } else if (err?.message?.toLowerCase().includes('insufficient allowance')) {
-        userMessage = 'Insufficient allowance. Please approve the token.';
-      }
-      setError(userMessage);
-      setTxStatus('error');
-      setIsLoading(false);
-      setAmount('');
-      setTxHash(null);
-      // Log technical details for debugging
-      console.error('Transaction error (details):', err);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const formatBalance = (balance: bigint | undefined) => {
@@ -373,11 +225,6 @@ function App({ theme, setTheme }: AppProps) {
     : (balance ? parseFloat(formatBalance(balance)) : 0);
   const animatedWallet = useCountUp(walletBalance, 1200);
 
-  // Calculate supplied progress
-  const supplied = aTokenBalance ? parseFloat(formatBalance(aTokenBalance)) : 0;
-  const animatedSupplied = useCountUp(supplied, 1200);
-  const growthPercent = supplyGoal > 0 ? Math.min(animatedSupplied / supplyGoal, 1) : 0;
-
   // Wallet bar: percent of selected token in total wallet value
   const walletPercent = totalWalletValue > 0 ? Math.min(walletBalance / totalWalletValue, 1) : 0;
 
@@ -385,11 +232,6 @@ function App({ theme, setTheme }: AppProps) {
   useEffect(() => {
     localStorage.setItem('supplyGoal', supplyGoal.toString());
   }, [supplyGoal]);
-
-  // Persist transactions to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('transactions', JSON.stringify(transactions));
-  }, [transactions]);
 
   // Fetch token price and price change when selectedToken or selectedPricePeriod changes
   useEffect(() => {
@@ -613,45 +455,8 @@ function App({ theme, setTheme }: AppProps) {
 
         {/* Chat Interface */}
         <div className="glass-card rounded-2xl p-8 mb-8 bg-opacity-50 border border-blue-400/30 hover-lift">
-          <ChatInterface theme={theme} />
+          <ChatInterface />
         </div>
-
-        {/* Transaction History */}
-        {showHistory && transactions.length > 0 && (
-          <div className="glass-card rounded-2xl p-6 mb-8 animate-fade-in shadow-xl z-20" style={{ marginBottom: '80px' }}>
-            <h2 className="text-xl font-semibold text-primary mb-4">Transaction History</h2>
-            <div className="space-y-4">
-              {transactions.map((tx) => (
-                <div
-                  key={tx.hash}
-                  className="glass-card flex items-center justify-between p-4 rounded-xl bg-opacity-50 shadow-md"
-                >
-                  <div className="flex items-center">
-                    <div className={`w-2 h-2 rounded-full mr-3 ${
-                      tx.status === 'success' ? 'bg-green-500' :
-                      tx.status === 'error' ? 'bg-red-500' :
-                      'bg-blue-500'
-                    }`}></div>
-                    <div>
-                      <p className="text-primary font-medium">
-                        {tx.type === 'deposit' ? 'Deposit' : 'Withdraw'} {tx.amount} {selectedToken.symbol}
-                      </p>
-                      <p className="text-sm text-secondary">{formatDate(tx.timestamp)}</p>
-                    </div>
-                  </div>
-                  <a
-                    href={`https://gnosisscan.io/tx/${tx.hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:text-blue-600 transition-colors duration-200"
-                  >
-                    View on Explorer
-                  </a>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Info Section - Fixed at bottom */}
         <div className="fixed bottom-0 left-0 right-0 py-4 bg-opacity-80 backdrop-blur-sm bg-gradient-to-t from-gray-900/10 to-transparent dark:from-gray-900/20">

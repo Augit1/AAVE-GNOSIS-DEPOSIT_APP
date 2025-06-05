@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useAccount, useWriteContract } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { parseUnits } from 'viem';
-import { AAVE_POOL_ABI, ERC20_ABI } from '@/config/abis';
-import { AAVE_POOL_ADDRESS, TOKENS } from '@/config/constants';
+import { AAVE_POOL_ABI, ERC20_ABI } from '../config/abis';
+import { AAVE_POOL_ADDRESS, TOKENS } from '../config/constants';
 
 export default function Home() {
   const [amount, setAmount] = useState('');

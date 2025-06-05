@@ -11,7 +11,7 @@ interface Message {
 }
 
 interface ChatInterfaceProps {
-  theme: 'light' | 'dark';
+  // Remove theme prop since it's not used
 }
 
 interface ComponentProps {
@@ -37,7 +37,7 @@ const components: Components = {
 
 const GNOSIS_BLOCKSCOUT_API = 'https://gnosis.blockscout.com/api';
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ theme }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);

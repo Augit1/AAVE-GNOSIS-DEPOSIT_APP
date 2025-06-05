@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { formatUnits } from 'viem';
 
 interface Token {
   address: `0x${string}`;
