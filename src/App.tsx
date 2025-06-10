@@ -60,7 +60,7 @@ function App({ theme, setTheme }: AppProps) {
   const selectedToken = (TOKENS as any)[selectedTokenKey];
 
   // Native xDAI balance
-  const { data: nativeBalance, isLoading: isNativeBalanceLoading } = useBalance({
+  const { data: nativeBalance } = useBalance({
     address,
     query: {
       enabled: selectedTokenKey === 'XDAI' && !!address,
@@ -71,8 +71,7 @@ function App({ theme, setTheme }: AppProps) {
   const { 
     data: balance, 
     isError: balanceError,
-    error: balanceErrorDetails,
-    isLoading: isBalanceLoading 
+    error: balanceErrorDetails
   } = useReadContract({
     address: selectedToken.address,
     abi: ERC20_ABI,
@@ -105,7 +104,6 @@ function App({ theme, setTheme }: AppProps) {
   // Read user's aToken (aGnoUSDCe) balance in the pool
   const { 
     data: aTokenBalance, 
-    isLoading: isATokenLoading, 
     isError: isATokenError,
     refetch: refetchATokenBalance 
   } = useReadContract({
